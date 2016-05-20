@@ -11,7 +11,7 @@ platforms :jruby do
 end
 
 gem 'rails'
-gem 'sidekiq', :path => '..'
+gem 'sr-sidekiq', :path => '..'
 #gem 'ruby-prof'
 
 #de Does not work with jruby or rbx:
