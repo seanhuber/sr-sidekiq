@@ -209,9 +209,32 @@ module Sidekiq
 
     def normalize_item(item)
       raise(ArgumentError, "Job must be a Hash with 'class' and 'args' keys: { 'class' => SomeWorker, 'args' => ['bob', 1, :foo => 'bar'] }") unless item.is_a?(Hash) && item.has_key?('class'.freeze) && item.has_key?('args'.freeze)
-      raise(ArgumentError, "Job args must be an Array") unless item['args'].is_a?(Array)
+      raise(ArgumentError, "Job args must be an Array") unless item['args'.freeze].is_a?(Array)
       raise(ArgumentError, "Job class must be either a Class or String representation of the class name") unless item['class'.freeze].is_a?(Class) || item['class'.freeze].is_a?(String)
       #raise(ArgumentError, "Arguments must be native JSON types, see https://github.com/mperham/sidekiq/wiki/Best-Practices") unless JSON.load(JSON.dump(item['args'])) == item['args']
+
+      args_to_check = if item['class'.freeze].is_a?(Class) && item['class'.freeze].name.include?('ActiveJob'.freeze)
+        raise(ArgumentError, "Unexpected arguments (expected array with single element): #{item['args'.freeze].inspect}") unless item['args'.freeze].length == 1
+        raise(ArgumentError, "Expected item['args'][0] to be a Hash: #{item['args'.freeze][0].inspect}") unless item['args'.freeze][0].is_a?(Hash)
+        if item['args'.freeze][0]['job_class'.freeze].include?('ActionMailer'.freeze) && item['args'.freeze][0]['arguments'.freeze].length > 3
+          # for ActionMailer, the first argument in the name of the mailer class, the second argument is the mail method, and the 3rd argument is the delivery method ('deliver_now').
+          item['args'.freeze][0]['arguments'.freeze][3..-1]
+        else
+          # check if all active job arguments are integers
+          item['args'.freeze][0]['arguments'.freeze]
+        end
+      else
+        # just check that item['args'] are all integers
+        item['args'.freeze]
+      end
+
+      args_to_check.each do |arg|
+        next if arg.is_a?(Fixnum)
+        raise(ArgumentError, "Only Fixnums, Arrays of Fixnums, or Hashes with Fixnum values are permitted as arguments. Received: #{arg}") unless arg.is_a?(Array) || arg.is_a?(Hash)
+        (arg.is_a?(Hash) ? arg.values : arg).each do |sub_arg|
+          raise(ArgumentError, "Only Fixnum arguments are permitted. Received: #{sub_arg}") unless sub_arg.is_a?(Fixnum)
+        end
+      end
 
       normalized_hash(item['class'.freeze])
         .each{ |key, value| item[key] = value if item[key].nil? }
